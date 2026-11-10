@@ -55,6 +55,12 @@
                         /', '%2f' ) }}&client_id=' + $client_id}" download>
                         <iconify-icon icon="clarity:download-line" style="font-size: 24px"></iconify-icon>
                     </a>
+                    {% if client_song_download.progress == 100 or client_song_download.message == "Error" %}
+                    <button class="btn btn-square btn-ghost text-error"
+                        title="Remove from queue"
+                        data-on-click="$song_url = '{{ client_song_download.song.url }}'; @post('/client/queue/remove/');">
+                        <iconify-icon icon="clarity:trash-line" style="font-size: 20px"></iconify-icon>
+                    </button>
                     {% elif client_song_download.progress == 0 %}
                     <button class="btn btn-circle btn-ghost loading"></button>
                     {% else %}
