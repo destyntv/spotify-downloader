@@ -28,7 +28,12 @@ def handle_signals(datastar_signals: dict | None) -> Signals:
     Handle the signals received from the client.
     This function can be used to process or validate the signals before they are used.
     """
-    app_state.logger.debug(f"Received signals: {datastar_signals}")
+    if datastar_signals:
+        # Signal payloads can contain credentials and other private settings.
+        # Log only field names, never their values.
+        app_state.logger.debug(
+            "Received signal fields: %s", sorted(datastar_signals.keys())
+        )
     if not datastar_signals:
         # raise ValueError("No signals provided.")
         app_state.logger.warning("No signals provided, returning empty Signals.")
@@ -59,12 +64,11 @@ def datastar_response(
     model from the handler's own return annotation.
 
     ### Arguments
-    - func: The route handler, a function or generator function.
+    - func: The function or generator function to wrap.
 
     ### Returns
-    - returns the wrapped route handler.
+    - returns the wrapped handler.
     """
-
     wrapper = _datastar_response(func)
     wrapper.__signature__ = inspect.signature(  # type: ignore[attr-defined]
         func, eval_str=True
