@@ -409,7 +409,19 @@ async def gen_download(signals: Signals):
 
     try:
         app_state.logger.info("[%s] Resolving Spotify URL metadata", signals.client_id)
-        songs = songs_from_spotify_url(signals.song_url)
+        # Spotify metadata lookups are synchronous and can block the event loop.
+        # Run them in a worker thread so the web app remains responsive, and bound
+        # the wait so a stalled Spotify/API request cannot leave the UI loading forever.
+        try:
+            songs = await asyncio.wait_for(
+                asyncio.to_thread(songs_from_spotify_url, signals.song_url),
+                timeout=90,
+            )
+        except asyncio.TimeoutError as exception:
+            raise TimeoutError(
+                "Spotify song details did not load within 90 seconds. Please retry."
+            ) from exception
+
         app_state.logger.info("[%s] Resolved %s track(s)", signals.client_id, len(songs))
         if not songs:
             raise ValueError("The Spotify collection contains no downloadable tracks.")
@@ -458,9 +470,14 @@ async def gen_download(signals: Signals):
 
     except Exception as exception:
         app_state.logger.exception("Download request failed for %s: %s", signals.song_url, exception)
+        failure_message = (
+            str(exception)
+            if isinstance(exception, TimeoutError)
+            else "Unable to load Spotify song details or start the download. Check server logs."
+        )
         yield SSE.patch_elements(f"""
             <button id="{button_id}" class="btn btn-error btn-square"
-                    title="Download failed. Check server logs.">
+                    title="{failure_message}">
                 <iconify-icon icon="clarity:error-line" style="font-size: 24px"></iconify-icon>
             </button>
         """)
