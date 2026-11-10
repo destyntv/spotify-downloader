@@ -1,4 +1,4 @@
-""" 
+"""
 Web module for the console.
 """
 
@@ -102,8 +102,8 @@ def web(web_settings: WebOptions, downloader_settings: DownloaderOptions):
         # workers=1,
         log_level=NAME_TO_LEVEL[downloader_settings["log_level"]],
         loop=app_state.loop,  # type: ignore
-        # Datastar sends UI state in query parameters; those can contain API
-        # credentials (for example, the Genius token). Never log full URLs.
+        # Datastar signals can contain credentials in query parameters.
+        # Disable request-line logging to keep those values out of Railway logs.
         access_log=False,
     )
     if web_settings["enable_tls"]:
@@ -134,7 +134,7 @@ def web(web_settings: WebOptions, downloader_settings: DownloaderOptions):
             "disable the `web_use_output_dir` option "
         )
 
-    logger.info("Starting web server \\n")
+    logger.info("Starting web server \n")
 
     def handle_shutdown(signum, frame):  # pylint: disable=unused-argument
         """
