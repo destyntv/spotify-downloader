@@ -306,6 +306,53 @@ async def handle_post_client_download(datastar_signals: ReadSignals):
     async for update in gen_download(signals):
         yield update
 
+@router.post("/client/queue/remove/")
+@datastar_response
+async def handle_post_client_queue_remove(datastar_signals: ReadSignals):
+    """
+    Remove a finished or failed item from the visible download queue.
+
+    Active downloads are deliberately not cancelled by this action.
+    """
+    signals = handle_signals(datastar_signals)
+    client = Client.get_instance(signals.client_id)
+    if client is None:
+        yield SSE.patch_elements(
+            templates.get_template("status-disconnected.html.j2").render()
+        )
+        return
+
+    song_url = signals.song_url
+    tracker = client.downloader.progress_handler.progress_tracker.songs.get(song_url)
+    if tracker is None:
+        app_state.logger.info(
+            "[%s] Queue item already absent: %s", signals.client_id, song_url
+        )
+    elif tracker.progress < 100 and tracker.message != "Error":
+        app_state.logger.warning(
+            "[%s] Refusing to remove active download from queue: %s",
+            signals.client_id,
+            song_url,
+        )
+        yield SSE.patch_elements("""
+            <div class="alert alert-warning m-2">
+                This download is still active. Wait for it to finish before removing it.
+            </div>
+        """)
+        return
+    else:
+        client.downloader.progress_handler.progress_tracker.remove(tracker.song)
+        app_state.logger.info(
+            "[%s] Removed finished queue item: %s", signals.client_id, song_url
+        )
+
+    client_song_downloads = client.downloader.progress_handler.progress_tracker.songs
+    yield SSE.patch_elements(
+        templates.get_template("download-list.html.j2").render(
+            client_song_downloads=client_song_downloads.values()
+        )
+    )
+
 
 # HELPERS
 
@@ -361,7 +408,9 @@ async def gen_download(signals: Signals):
         )
 
     try:
+        app_state.logger.info("[%s] Resolving Spotify URL metadata", signals.client_id)
         songs = songs_from_spotify_url(signals.song_url)
+        app_state.logger.info("[%s] Resolved %s track(s)", signals.client_id, len(songs))
         if not songs:
             raise ValueError("The Spotify collection contains no downloadable tracks.")
 
@@ -369,7 +418,7 @@ async def gen_download(signals: Signals):
         failed = 0
         for song in songs:
             try:
-                app_state.logger.info(f"Downloading song: {song}")
+                app_state.logger.info("[%s] Starting audio pipeline for %s", signals.client_id, song.display_name)
                 _, path = await client.downloader.pool_download(song)
                 if path is None:
                     failed += 1
@@ -378,8 +427,8 @@ async def gen_download(signals: Signals):
                     succeeded += 1
             except Exception as exception:  # Continue with the remaining tracks.
                 failed += 1
-                app_state.logger.error(
-                    f"Error downloading {song.name}: {exception}"
+                app_state.logger.exception(
+                    "Audio pipeline failed for %s: %s", song.name, exception
                 )
 
         if succeeded == 0:
@@ -408,7 +457,7 @@ async def gen_download(signals: Signals):
             """)
 
     except Exception as exception:
-        app_state.logger.error(f"Error downloading! {exception}")
+        app_state.logger.exception("Download request failed for %s: %s", signals.song_url, exception)
         yield SSE.patch_elements(f"""
             <button id="{button_id}" class="btn btn-error btn-square"
                     title="Download failed. Check server logs.">
