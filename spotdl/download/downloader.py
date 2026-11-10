@@ -82,6 +82,9 @@ SPONSOR_BLOCK_CATEGORIES = {
 
 logger = logging.getLogger(__name__)
 
+# Lyrics are optional and must not hold up the audio download indefinitely.
+LYRICS_SEARCH_TIMEOUT = 15
+
 
 class DownloaderError(Exception):
     """
@@ -592,9 +595,14 @@ class Downloader:
                             exc,
                         )
 
-            # Find song lyrics and add them to the song object
+            # Find song lyrics and add them to the song object. Lyrics are
+            # optional metadata: a slow or unavailable lyrics provider must not
+            # prevent the audio download from starting.
             try:
-                lyrics = await loop.run_in_executor(None, self.search_lyrics, song)
+                lyrics = await asyncio.wait_for(
+                    loop.run_in_executor(None, self.search_lyrics, song),
+                    timeout=LYRICS_SEARCH_TIMEOUT,
+                )
                 if lyrics is None:
                     logger.debug(
                         "No lyrics found for %s, lyrics providers: %s",
@@ -605,6 +613,13 @@ class Downloader:
                     )
                 else:
                     song.lyrics = lyrics
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Lyrics lookup timed out after %s seconds for %s; "
+                    "continuing download without lyrics",
+                    LYRICS_SEARCH_TIMEOUT,
+                    song.display_name,
+                )
             except Exception as exc:
                 logger.debug("Could not search for lyrics: %s", exc)
 
