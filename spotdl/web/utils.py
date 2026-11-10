@@ -30,7 +30,7 @@ def handle_signals(datastar_signals: dict | None) -> Signals:
     """
     if datastar_signals:
         # Signal payloads can contain credentials and other private settings.
-        # Log only field names, never their values.
+        # Log field names only; never log signal values.
         app_state.logger.debug(
             "Received signal fields: %s", sorted(datastar_signals.keys())
         )
@@ -64,11 +64,12 @@ def datastar_response(
     model from the handler's own return annotation.
 
     ### Arguments
-    - func: The function or generator function to wrap.
+    - func: The route handler, a function or generator function.
 
     ### Returns
-    - returns the wrapped handler.
+    - returns the wrapped route handler.
     """
+
     wrapper = _datastar_response(func)
     wrapper.__signature__ = inspect.signature(  # type: ignore[attr-defined]
         func, eval_str=True
