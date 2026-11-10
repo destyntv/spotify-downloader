@@ -23,6 +23,10 @@
     </div>
 
     {% include "settings.html" %}
+    <button class="btn btn-ghost btn-circle m-2" type="button"
+        onclick="toggleSpotdlTheme()" title="Toggle AI-inspired theme" aria-label="Toggle AI-inspired theme">
+        <iconify-icon icon="solar:magic-stick-3-linear" style="font-size: 24px"></iconify-icon>
+    </button>
 
     <div class="mx-2 indicator">
       {# {% if client_song_downloads|length == 0 %} #}
