@@ -16,6 +16,9 @@ from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
 from spotdl._version import __version__
+from spotdl.types.album import Album
+from spotdl.types.artist import Artist
+from spotdl.types.playlist import Playlist
 from spotdl.download.downloader import AUDIO_PROVIDERS, LYRICS_PROVIDERS
 from spotdl.types.song import Song
 from spotdl.utils.config import get_spotdl_path
@@ -307,14 +310,34 @@ async def handle_post_client_download(datastar_signals: ReadSignals):
 # HELPERS
 
 
+def songs_from_spotify_url(url: str) -> list[Song]:
+    """
+    Resolve a Spotify track, album, playlist, or artist URL into individual songs.
+    """
+    if "playlist" in url:
+        collection = Playlist.from_url(url)
+        return [Song.from_url(song_url) for song_url in collection.urls]
+    if "album" in url:
+        collection = Album.from_url(url)
+        return [Song.from_url(song_url) for song_url in collection.urls]
+    if "artist" in url:
+        collection = Artist.from_url(url)
+        return [Song.from_url(song_url) for song_url in collection.urls]
+
+    return [Song.from_url(url)]
+
+
 async def gen_download(signals: Signals):
     """
     Generate the download process for the client.
+
+    Collection URLs are expanded into individual tracks because the downloader
+    pool accepts Song objects, not album or playlist URLs.
     """
     client = Client.get_instance(signals.client_id)
     if client is None:
         app_state.logger.warning(
-            f"Client {signals.client_id} not found, cannot load downloads."
+            f"[{signals.client_id}] Client not found, cannot load downloads."
         )
         yield SSE.patch_elements(
             templates.get_template("status-disconnected.html.j2").render()
@@ -323,8 +346,9 @@ async def gen_download(signals: Signals):
     app_state.logger.info(
         f"[{signals.client_id}] Download requested: {signals.song_url}"
     )
+    button_id = f"download-{signals.song_url}"
     yield SSE.patch_elements(f"""
-            <button id="download-{signals.song_url}" class="btn btn-primary btn-square loading">
+            <button id="{button_id}" class="btn btn-primary btn-square loading">
                 </button>
         """)
 
@@ -337,25 +361,60 @@ async def gen_download(signals: Signals):
         )
 
     try:
-        # Fetch song metadata
-        song = Song.from_url(signals.song_url)
-        app_state.logger.info(f"Downloading song: {song}")
+        songs = songs_from_spotify_url(signals.song_url)
+        if not songs:
+            raise ValueError("The Spotify collection contains no downloadable tracks.")
 
-        # Download Song
-        _, path = await client.downloader.pool_download(song)
-        yield SSE.patch_elements(f"""
-            <button id="download-{signals.song_url}" class="btn btn-primary btn-square">
+        succeeded = 0
+        failed = 0
+        for song in songs:
+            try:
+                app_state.logger.info(f"Downloading song: {song}")
+                _, path = await client.downloader.pool_download(song)
+                if path is None:
+                    failed += 1
+                    app_state.logger.error(f"Failure downloading {song.name}")
+                else:
+                    succeeded += 1
+            except Exception as exception:  # Continue with the remaining tracks.
+                failed += 1
+                app_state.logger.error(
+                    f"Error downloading {song.name}: {exception}"
+                )
+
+        if succeeded == 0:
+            raise RuntimeError(
+                f"Unable to download any of the {len(songs)} tracks in this request."
+            )
+
+        if failed:
+            app_state.logger.warning(
+                f"Download finished with {succeeded} successful and {failed} failed tracks."
+            )
+            yield SSE.patch_elements(f"""
+                <button id="{button_id}" class="btn btn-warning btn-square"
+                        title="{succeeded} downloaded, {failed} failed">
+                    <iconify-icon icon="clarity:warning-line" style="font-size: 24px"></iconify-icon>
+                </button>
+            """)
+        else:
+            app_state.logger.info(
+                f"Download finished: {succeeded} track(s) downloaded."
+            )
+            yield SSE.patch_elements(f"""
+                <button id="{button_id}" class="btn btn-primary btn-square">
                     <iconify-icon icon="clarity:check-line" style="font-size: 24px"></iconify-icon>
                 </button>
-        """)
-
-        if path is None:
-            app_state.logger.error(f"Failure downloading {song.name}")
-
-        # return str(path.absolute())
+            """)
 
     except Exception as exception:
         app_state.logger.error(f"Error downloading! {exception}")
+        yield SSE.patch_elements(f"""
+            <button id="{button_id}" class="btn btn-error btn-square"
+                    title="Download failed. Check server logs.">
+                <iconify-icon icon="clarity:error-line" style="font-size: 24px"></iconify-icon>
+            </button>
+        """)
 
 
 # COMPONENTS
