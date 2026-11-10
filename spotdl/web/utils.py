@@ -28,7 +28,12 @@ def handle_signals(datastar_signals: dict | None) -> Signals:
     Handle the signals received from the client.
     This function can be used to process or validate the signals before they are used.
     """
-    app_state.logger.debug(f"Received signals: {datastar_signals}")
+    if datastar_signals:
+        # Signal payloads can contain credentials and other private settings.
+        # Log field names only; never log signal values.
+        app_state.logger.debug(
+            "Received signal fields: %s", sorted(datastar_signals.keys())
+        )
     if not datastar_signals:
         # raise ValueError("No signals provided.")
         app_state.logger.warning("No signals provided, returning empty Signals.")

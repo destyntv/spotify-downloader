@@ -102,6 +102,9 @@ def web(web_settings: WebOptions, downloader_settings: DownloaderOptions):
         # workers=1,
         log_level=NAME_TO_LEVEL[downloader_settings["log_level"]],
         loop=app_state.loop,  # type: ignore
+        # Datastar signals can contain credentials in query parameters.
+        # Disable request-line logging to keep those values out of Railway logs.
+        access_log=False,
     )
     if web_settings["enable_tls"]:
         logger.info("Enabeling TLS")
