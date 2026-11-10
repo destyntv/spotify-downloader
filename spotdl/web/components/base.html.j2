@@ -63,6 +63,66 @@
         localStorage.setItem("spotdl-theme", nextTheme);
     }
 
+
+    async function downloadQueuedFile(button, clientId) {
+        const originalTitle = button.title || "Download file";
+        const feedback = document.getElementById("download-feedback");
+        button.disabled = true;
+        button.classList.add("loading");
+        const showFeedback = (message, isError = false) => {
+            if (!feedback) return;
+            feedback.textContent = message;
+            feedback.className = isError
+                ? "alert alert-error shadow-lg fixed top-20 right-4 z-50 max-w-md"
+                : "alert alert-success shadow-lg fixed top-20 right-4 z-50 max-w-md";
+            feedback.hidden = false;
+        };
+        try {
+            const params = new URLSearchParams({
+                file: button.dataset.filePath || "",
+                client_id: clientId || ""
+            });
+            const response = await fetch("/api/download/file?" + params.toString(), {
+                method: "GET",
+                headers: { "Accept": "application/octet-stream, application/json" }
+            });
+            if (!response.ok) {
+                let detail = "HTTP " + response.status;
+                try {
+                    const payload = await response.json();
+                    detail = payload.detail || detail;
+                } catch (_) {
+                    const body = await response.text().catch(() => "");
+                    if (body) detail = body.slice(0, 300);
+                }
+                throw new Error(detail);
+            }
+            const blob = await response.blob();
+            if (!blob.size) throw new Error("The server returned an empty file.");
+            const disposition = response.headers.get("Content-Disposition") || "";
+            const match = disposition.match(/filename[^=]*=(?:UTF-8''|")?([^;"]+)/i);
+            const filename = match ? decodeURIComponent(match[1].replace(/^"|"$/g, "")) : "download";
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = objectUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(objectUrl);
+            showFeedback("Download started: " + filename);
+        } catch (error) {
+            console.error("Queued file download failed:", error);
+            showFeedback("Download failed: " + (error.message || "Unknown error"), true);
+            button.title = "Download failed: " + (error.message || "Unknown error");
+            button.classList.add("text-error");
+        } finally {
+            button.disabled = false;
+            button.classList.remove("loading");
+            if (!button.classList.contains("text-error")) button.title = originalTitle;
+        }
+    }
+
     function goto(location) {
         window.location.href = location;
     }
@@ -79,7 +139,7 @@
     </script>
 
     <div class="bg-base-300 absolute w-full t-0">
-        {% include "navbar.html.j2" %}
+        {% include "navbar.html.j2" %}\n        <div id="download-feedback" hidden aria-live="polite"></div>
 
         <!-- Content -->
         {% block content %}
