@@ -3,7 +3,9 @@
 {% block content %}
 
 <div class="min-h-screen">
-    <div id="download-list" data-on-load="@get('/client/downloads')"></div>
+    <div id="download-list"
+        data-on-signal-patch="@get('/client/downloads')"
+        data-on-signal-patch-filter="{include: /client_id/}"></div>
 </div>
 
 {% endblock content %}
