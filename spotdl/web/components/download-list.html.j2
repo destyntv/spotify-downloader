@@ -51,9 +51,13 @@
                     </button> #}
                     {# {{client_song_download}} #}
                     {% if client_song_download.progress == 100 %}
-                    <a class="btn btn-square btn-ghost" data-attr="{href:'/api/download/file?file={{ client_song_download.path|urlencode|replace('\n                        /', '%2f' ) }}&client_id=' + $client_id}" download>
+                    <button class="btn btn-square btn-ghost"
+                        type="button"
+                        title="Download file"
+                        data-file-path="{{ client_song_download.path }}"
+                        data-on-click="downloadQueuedFile($el, $client_id)">
                         <iconify-icon icon="clarity:download-line" style="font-size: 24px"></iconify-icon>
-                    </a>
+                    </button>
                     <button class="btn btn-square btn-ghost text-error"
                         title="Remove from queue"
                         data-on-click="$song_url = '{{ client_song_download.song.url }}'; @post('/client/queue/remove/');">
